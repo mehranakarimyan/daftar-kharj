@@ -1,3 +1,5 @@
+/* Self-hosted font: put Vazirmatn.woff2 in the fonts/ folder (see README). Falls back to system fonts. */
+@font-face{font-family:'Vazirmatn';src:url('fonts/Vazirmatn.woff2') format('woff2');font-weight:100 900;font-display:swap}
 :root{
   --bg:#F4FAF6;--surface:#FFFFFF;--ink:#10281C;--muted:#5E7468;--line:#DCEBE1;
   --accent:#148A52;--accent-ink:#FFFFFF;--accent-soft:#E1F5EA;

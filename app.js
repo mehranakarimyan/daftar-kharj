@@ -62,7 +62,6 @@ function dayLabel(iso) {
 const fullDate = iso => { const j = toJ(iso); return `${fa(j.d)} ${MONTHS[j.m - 1]} ${String(j.y).replace(/\d/g, d => FA_D[d])}`; };
 
 /* ---------- data ---------- */
-const KEY = 'dafter-kharj-v1';
 const DEFAULT_CATS = [
   {id:'food', type:'out', name:'خوراک', emoji:'🍔', color:'#E8832A'},
   {id:'transport', type:'out', name:'رفت‌وآمد', emoji:'🚌', color:'#0E7C86'},
@@ -78,29 +77,45 @@ const DEFAULT_CATS = [
   {id:'in-work', type:'in', name:'کار و درآمد', emoji:'💼', color:'#0E7C86'},
   {id:'in-other', type:'in', name:'سایر درآمدها', emoji:'✨', color:'#7BC74D'}
 ];
-const defaults = () => ({v:1, txs:[], cats:DEFAULT_CATS.map(c => ({...c})), budget:0, theme:'auto', lastCat:{out:'food', in:'in-family'}, lastBackup:0, snooze:0});
-let storageOK = true;
-function load() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return normalize(JSON.parse(raw));
-  } catch (e) { storageOK = false; }
-  return defaults();
-}
+const defaults = () => ({v:2, txs:[], cats:DEFAULT_CATS.map(c => ({...c})), budget:0, theme:'auto', lastCat:{out:'food', in:'in-family'}, lastBackup:0, snooze:0});
+const COLOR_RE = /^#[0-9a-fA-F]{6}$/, ID_RE = /^[A-Za-z0-9_.-]{1,48}$/;
+const clampInt = (v, min, max) => { v = Math.round(+v); return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : min; };
+const validISO = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && +s.slice(0, 4) >= 1990 && +s.slice(0, 4) <= 2100 && !isNaN(isoToDate(s)) && dateToIso(isoToDate(s)) === s;
+/* Everything that enters the app from outside (storage, backup files) goes through here.
+   Values are re-built field by field, so nothing unexpected can reach the HTML templates. */
 function normalize(d) {
   const base = defaults();
-  const o = {...base, ...d};
-  if (!Array.isArray(o.txs)) o.txs = [];
-  if (!Array.isArray(o.cats) || !o.cats.length) o.cats = base.cats;
-  o.txs = o.txs.filter(t => t && Number.isFinite(+t.amount) && /^\d{4}-\d{2}-\d{2}$/.test(t.date)).map(t => ({id:t.id || uid(), type:t.type === 'in' ? 'in' : 'out', amount:Math.round(+t.amount), cat:t.cat, note:String(t.note || ''), date:t.date, ts:t.ts || Date.now()}));
-  o.lastCat = {...base.lastCat, ...(o.lastCat || {})};
+  d = d && typeof d === 'object' ? d : {};
+  const o = {...base};
+  const seen = new Set(), cats = [];
+  for (const c of (Array.isArray(d.cats) ? d.cats.slice(0, 200) : [])) {
+    if (!c || typeof c !== 'object') continue;
+    const id = String(c.id || ''), name = String(c.name || '').trim().slice(0, 40);
+    if (!ID_RE.test(id) || seen.has(id) || !name) continue;
+    seen.add(id);
+    cats.push({id, type:c.type === 'in' ? 'in' : 'out', name, emoji:String(c.emoji || '🧾').slice(0, 8), color:COLOR_RE.test(c.color) ? c.color : '#6B7F73', budget:clampInt(c.budget, 0, 1e12)});
+  }
+  ['out', 'in'].forEach(type => { if (!cats.some(c => c.type === type)) DEFAULT_CATS.filter(c => c.type === type && !seen.has(c.id)).forEach(c => cats.push({...c})); });
+  o.cats = cats;
+  const ids = new Set(); o.txs = [];
+  for (const t of (Array.isArray(d.txs) ? d.txs.slice(0, 200000) : [])) {
+    if (!t || typeof t !== 'object') continue;
+    const amount = Math.round(+t.amount);
+    if (!Number.isFinite(amount) || amount < 1 || amount > 1e12 || !validISO(t.date)) continue;
+    let id = String(t.id || ''); if (!ID_RE.test(id) || ids.has(id)) id = uid();
+    ids.add(id);
+    o.txs.push({id, type:t.type === 'in' ? 'in' : 'out', amount, cat:ID_RE.test(String(t.cat || '')) ? String(t.cat) : '', note:String(t.note || '').slice(0, 200), date:t.date, ts:clampInt(t.ts || Date.now(), 0, 8.64e15)});
+  }
+  o.budget = clampInt(d.budget, 0, 1e12);
+  o.theme = ['auto', 'light', 'dark'].includes(d.theme) ? d.theme : 'auto';
+  o.lastCat = {...base.lastCat};
+  if (d.lastCat && typeof d.lastCat === 'object') ['out', 'in'].forEach(k => { if (ID_RE.test(String(d.lastCat[k] || ''))) o.lastCat[k] = String(d.lastCat[k]); });
+  o.lastBackup = clampInt(d.lastBackup, 0, 8.64e15);
+  o.snooze = clampInt(d.snooze, 0, 8.64e15);
   return o;
 }
-let data = load();
-function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(data)); storageOK = true; }
-  catch (e) { storageOK = false; toast('ذخیره نشد؛ حافظهٔ مرورگر در دسترس نیست'); }
-}
+let data = defaults();
+function save() { Store.save(data); }
 
 const FALLBACK_CAT = {id:'', name:'بدون دسته', emoji:'❔', color:'#6B7690'};
 const catOf = id => data.cats.find(c => c.id === id) || FALLBACK_CAT;
@@ -354,15 +369,16 @@ function viewSettings() {
   <div class="card"><h2>ظاهر</h2><div class="seg" role="group" aria-label="پوسته">
     ${[['auto','خودکار'],['light','روشن'],['dark','تاریک']].map(([k, l]) => `<button data-act="theme" data-t="${k}" class="${data.theme === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
   <div class="card"><h2>داده‌ها و پشتیبان</h2>
-    <p class="hint" style="margin:0 0 10px">اطلاعات فقط روی همین گوشی ذخیره می‌شه (${fa(data.txs.length)} تراکنش). اگه مرورگر رو پاک کنی یا گوشی عوض کنی از بین می‌ره؛ پس هر چند وقت یه بار پشتیبان بگیر.</p>
+    <p class="hint" style="margin:0 0 10px">اطلاعات فقط روی همین گوشی ذخیره می‌شه (${fa(data.txs.length)} تراکنش). اگه مرورگر رو پاک کنی یا گوشی عوض کنی ممکنه از بین بره؛ پس هر چند وقت یه بار پشتیبان بگیر.</p>
     <div class="btnrow" style="flex-wrap:wrap">
-      <button class="btn ghost small" data-act="export-json">پشتیبان (JSON)</button>
+      <button class="btn ghost small" data-act="export-json">پشتیبان رمزدار</button>
       <button class="btn ghost small" data-act="export-csv">خروجی اکسل (CSV)</button></div>
     <div class="btnrow"><button class="btn ghost small" data-act="import">بازیابی از پشتیبان</button>
       <button class="btn danger small" data-act="wipe">پاک کردن همه</button></div>
     <input type="file" id="file" accept="application/json,.json" hidden>
     ${data.lastBackup ? `<p class="hint" style="margin:10px 0 0">آخرین پشتیبان: ${fullDate(dateToIso(new Date(data.lastBackup)))}</p>` : ''}
-    ${storageOK ? '' : '<p class="hint" style="color:var(--bad)">حافظهٔ مرورگر در دسترس نیست (شاید حالت خصوصی). داده‌ها ذخیره نمی‌شن.</p>'}</div>
+    <p class="hint" style="margin:10px 0 0">ذخیره‌سازی: ${Store.kind === 'idb' ? 'پایگاه‌داده‌ی مرورگر (IndexedDB)' : Store.kind === 'ls' ? 'حافظهٔ ساده‌ی مرورگر' : 'موقت'}${ui.persisted ? '، پایدار' : ''}</p>
+    ${Store.ok ? '' : '<p class="hint" style="color:var(--bad)">حافظهٔ دستگاه در دسترس نیست (شاید حالت خصوصی یا پر بودن حافظه). داده‌ها ذخیره نمی‌شن؛ همین حالا پشتیبان بگیر.</p>'}</div>
   ${standalone ? '' : `<div class="card"><h2>نصب روی گوشی</h2>
     ${ui.deferredInstall ? '<button class="btn block" data-act="install">نصب برنامه</button>' :
     `<div class="hint">${isIOS ? 'در Safari دکمهٔ اشتراک‌گذاری (مربع با فلش) رو بزن و «Add to Home Screen» رو انتخاب کن.' : 'در Chrome منوی سه‌نقطه رو باز کن و «Install app» یا «Add to Home screen» رو بزن.'} بعدش مثل یه اپ معمولی باز می‌شه و آفلاین هم کار می‌کنه.</div>`}</div>`}
@@ -474,23 +490,59 @@ function download(name, text, mime) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 const stamp = () => todayISO();
-function exportJSON() {
-  data.lastBackup = Date.now(); save();
-  download(`dafter-kharj-backup-${stamp()}.json`, JSON.stringify(data, null, 1), 'application/json');
-  toast('فایل پشتیبان ساخته شد'); if (ui.tab === 'settings') render();
-}
+const csvSafe = v => { v = String(v); return /^[=+\-@\t\r]/.test(v) ? "'" + v : v; };   // stops spreadsheet formula injection
 function exportCSV() {
   const q = v => `"${String(v).replace(/"/g, '""')}"`;
   const rows = [['تاریخ شمسی', 'تاریخ میلادی', 'نوع', 'دسته', 'مبلغ (تومان)', 'توضیح']];
-  sortTxs(data.txs).reverse().forEach(t => { const j = toJ(t.date); rows.push([`${j.y}/${pad(j.m)}/${pad(j.d)}`, t.date, t.type === 'out' ? 'خرج' : 'درآمد', catOf(t.cat).name, t.amount, t.note]); });
+  sortTxs(data.txs).reverse().forEach(t => { const j = toJ(t.date); rows.push([`${j.y}/${pad(j.m)}/${pad(j.d)}`, t.date, t.type === 'out' ? 'خرج' : 'درآمد', csvSafe(catOf(t.cat).name), t.amount, csvSafe(t.note)]); });
   download(`dafter-kharj-${stamp()}.csv`, '\uFEFF' + rows.map(r => r.map(q).join(',')).join('\r\n'), 'text/csv;charset=utf-8');
   toast('فایل اکسل ساخته شد');
 }
+function exportJSON() {
+  sheet(`<h3>پشتیبان‌گیری</h3>
+    <p class="hint" style="margin:0 0 10px">با رمز، فایل رمزنگاری می‌شه و بدون رمز باز نمی‌شه. اگه رمز رو فراموش کنی، راهی برای بازیابی نیست.</p>
+    <label class="lbl" for="bp1">رمز (حداقل ۶ کاراکتر)</label><input class="field" id="bp1" type="password" autocomplete="new-password">
+    <label class="lbl" for="bp2">تکرار رمز</label><input class="field" id="bp2" type="password" autocomplete="new-password">
+    <div class="btnrow"><button class="btn ghost" data-act="close">انصراف</button><button class="btn" id="benc">ساخت پشتیبان رمزدار</button></div>
+    <div class="btnrow"><button class="btn danger" id="bplain">بدون رمز (ناامن)</button></div>`);
+  $('#benc').onclick = async () => {
+    const p1 = $('#bp1').value, p2 = $('#bp2').value;
+    if (!window.Secure || !Secure.available()) { toast('رمزنگاری فقط روی https یا localhost کار می‌کنه'); return; }
+    if (p1.length < 6) { toast('رمز باید حداقل ۶ کاراکتر باشه'); return; }
+    if (p1 !== p2) { toast('تکرار رمز با رمز یکی نیست'); return; }
+    await doBackup(p1);
+  };
+  $('#bplain').onclick = () => doBackup('');
+}
+async function doBackup(pw) {
+  try {
+    data.lastBackup = Date.now(); save();
+    const text = JSON.stringify(data);
+    if (pw) download(`dafter-kharj-backup-${stamp()}.enc.json`, JSON.stringify(await Secure.encrypt(text, pw)), 'application/json');
+    else download(`dafter-kharj-backup-${stamp()}.json`, text, 'application/json');
+    closeSheet(); toast(pw ? 'پشتیبان رمزدار ساخته شد' : 'فایل پشتیبان ساخته شد'); if (ui.tab === 'settings' || ui.tab === 'add') render();
+  } catch (e) { toast('ساخت پشتیبان ناموفق بود'); }
+}
+function askPassword() {
+  return new Promise(res => {
+    sheet(`<h3>رمز فایل پشتیبان</h3><input class="field" id="ip" type="password" autocomplete="current-password" aria-label="رمز">
+      <div class="btnrow"><button class="btn ghost" id="ipn">انصراف</button><button class="btn" id="ipy">باز کن</button></div>`);
+    $('#ip').focus();
+    $('#ipn').onclick = () => { closeSheet(); res(null); };
+    $('#ipy').onclick = () => { const v = $('#ip').value; closeSheet(); res(v); };
+  });
+}
 function importFile(file) {
+  if (file.size > 20 * 1024 * 1024) { toast('فایل خیلی بزرگه'); return; }
   const r = new FileReader();
   r.onload = async () => {
     try {
-      const d = JSON.parse(r.result);
+      let d = JSON.parse(r.result);
+      if (window.Secure && Secure.isEncrypted(d)) {
+        const pw = await askPassword();
+        if (pw === null) return;
+        try { d = JSON.parse(await Secure.decrypt(d, pw)); } catch (e) { toast('رمز اشتباهه یا فایل آسیب دیده'); return; }
+      }
       if (!d || !Array.isArray(d.txs)) throw new Error('bad');
       const n = normalize(d);
       if (await confirmSheet(`${fa(n.txs.length)} تراکنش پیدا شد. جایگزین داده‌های فعلی بشه؟`, 'جایگزین کن')) {
@@ -581,15 +633,28 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'Enter') saveForm();
 });
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); ui.deferredInstall = e; if (ui.tab === 'settings') render(); });
+window.addEventListener('pagehide', () => Store.flush());
 window.addEventListener('appinstalled', () => { ui.deferredInstall = null; if (ui.tab === 'settings') render(); });
 document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') Store.flush();
   if (document.visibilityState === 'visible' && ui.tab === 'add' && !ui.form.id && ui.form.date !== todayISO() && !ui.form.amount) { ui.form.date = todayISO(); }
 });
 
 /* ---------- boot ---------- */
-applyTheme();
-render();
-if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+async function boot() {
+  Store.onerror = () => { toast('ذخیره نشد؛ حافظهٔ دستگاه در دسترس نیست'); if (ui.tab === 'settings') render(); };
+  let res = { data:null, migrated:false };
+  try { res = await Store.load(); } catch (e) { /* start with defaults */ }
+  data = normalize(res.data);
+  ui.form = newForm('out'); ui.month = curMonth();
+  applyTheme();
+  if (res.migrated) { await Store.saveNow(data); Store.retireLegacy(); }
+  render();
+  try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) { /* optional */ }
+  ui.persisted = await Store.persisted();
+  if (ui.tab === 'settings') render();
+}
+boot();
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }

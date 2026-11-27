@@ -1,0 +1,9 @@
+{
+  "appId": "ir.mehranakarimyan.daftarkharj",
+  "appName": "دفتر خرج",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "plugins": {
+    "CapacitorSQLite": { "androidIsEncryption": false }
+  }
+}

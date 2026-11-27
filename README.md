@@ -69,18 +69,25 @@ python -m http.server 8000
 index.html               صفحه
 style.css                ظاهر (روز و شب)
 app.js                   منطق برنامه و نمایش‌ها
-storage.js               لایهٔ ذخیره‌سازی (IndexedDB)
+storage.js               لایهٔ ذخیره‌سازی وب (IndexedDB)
+storage-sqlite.js        لایهٔ ذخیره‌سازی اپ اندروید (SQLite)
 secure.js                رمزنگاری پشتیبان
 sw.js                    سرویس‌ورکر (آفلاین)
 manifest.webmanifest     تنظیمات نصب
+scripts/build-web.js     آماده‌سازی فایل‌ها برای اپ اندروید
+capacitor.config.json    تنظیمات Capacitor
 docs/screenshots/        تصاویر README
 ```
 
 لایهٔ ذخیره‌سازی عمداً جداست تا نسخهٔ اندروید فقط همین فایل رو با SQLite عوض کنه.
 
+## 📱 اپ اندروید
+
+همین کد با Capacitor به یه اپ اندروید تبدیل می‌شه و داده‌ها رو تو SQLite روی گوشی نگه می‌داره. راهنمای ساخت: [docs/ANDROID.md](docs/ANDROID.md)
+
 ## 🛠 فناوری‌ها
 
-جاوااسکریپت ساده (بدون فریم‌ورک و بدون build)، IndexedDB، WebCrypto، Service Worker، و `Intl` برای تقویم جلالی.
+جاوااسکریپت ساده (بدون فریم‌ورک و بدون build)، Capacitor، SQLite، IndexedDB، WebCrypto، Service Worker، و `Intl` برای تقویم جلالی.
 
 ## 🧑‍💻 توسعه
 

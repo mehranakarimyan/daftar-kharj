@@ -1,0 +1,37 @@
+{
+  "name": "dafter-kharj",
+  "version": "1.0.0",
+  "description": "Persian expense tracker for students (PWA + Android)",
+  "main": "index.html",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:web": "node scripts/build-web.js",
+    "sync": "node scripts/build-web.js && npx cap sync android"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mehranakarimyan/daftar-kharj.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/mehranakarimyan/daftar-kharj/issues"
+  },
+  "homepage": "https://github.com/mehranakarimyan/daftar-kharj#readme",
+  "dependencies": {
+    "@capacitor-community/sqlite": "^8.1.1",
+    "@capacitor/android": "^8.6.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.3",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.3"
+  }
+}

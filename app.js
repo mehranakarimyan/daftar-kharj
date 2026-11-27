@@ -11,6 +11,8 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>'
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const pad = n => String(n).padStart(2, '0');
 const DAY = 864e5;
+const isNative = () => !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
+const plugin = n => (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins[n]) || null;
 const MONTHS = ['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
 const PALETTE = ['#148A52','#2FB872','#7BC74D','#B5D334','#0E7C86','#27A6A0','#E0A82E','#E8832A','#2E6BD1','#6B7F73'];
 const EMOJIS = ['🍔','🍕','☕','🚌','🚕','⛽','📚','✏️','💻','🎬','🎮','🏠','📱','💡','💊','🏥','👕','👟','🎁','🎉','🛒','🧾','💰','💼','✈️','🐱','💇','🏋️'];
@@ -357,7 +359,7 @@ function viewSettings() {
     <span class="ico" style="background:${c.color}22;width:36px;height:36px;font-size:18px">${esc(c.emoji)}</span>
     <span class="grow" style="flex:1"><b style="font-weight:600">${esc(c.name)}</b>${c.budget > 0 ? `<small class="muted" style="display:block">بودجه: ${fa(c.budget)}</small>` : ''}</span><span class="muted">ویرایش</span></button>`).join('');
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const standalone = matchMedia('(display-mode:standalone)').matches || navigator.standalone;
+  const standalone = matchMedia('(display-mode:standalone)').matches || navigator.standalone || isNative();
   return `<div class="top"><h1>تنظیمات</h1>${themeBtn()}</div>
   <div class="card"><h2>بودجهٔ ماهانه</h2>
     <input class="field" data-bind="budget" inputmode="numeric" placeholder="مثلاً ۸٬۰۰۰٬۰۰۰ (خالی = بدون بودجه)" value="${data.budget ? fa(data.budget) : ''}" aria-label="بودجهٔ ماهانه">
@@ -377,7 +379,7 @@ function viewSettings() {
       <button class="btn danger small" data-act="wipe">پاک کردن همه</button></div>
     <input type="file" id="file" accept="application/json,.json" hidden>
     ${data.lastBackup ? `<p class="hint" style="margin:10px 0 0">آخرین پشتیبان: ${fullDate(dateToIso(new Date(data.lastBackup)))}</p>` : ''}
-    <p class="hint" style="margin:10px 0 0">ذخیره‌سازی: ${Store.kind === 'idb' ? 'پایگاه‌داده‌ی مرورگر (IndexedDB)' : Store.kind === 'ls' ? 'حافظهٔ ساده‌ی مرورگر' : 'موقت'}${ui.persisted ? '، پایدار' : ''}</p>
+    <p class="hint" style="margin:10px 0 0">ذخیره‌سازی: ${Store.kind === 'sqlite' ? 'پایگاه‌داده‌ی SQLite روی گوشی' : Store.kind === 'idb' ? 'پایگاه‌داده‌ی مرورگر (IndexedDB)' : Store.kind === 'ls' ? 'حافظهٔ ساده‌ی مرورگر' : 'موقت'}${ui.persisted ? '، پایدار' : ''}</p>
     ${Store.ok ? '' : '<p class="hint" style="color:var(--bad)">حافظهٔ دستگاه در دسترس نیست (شاید حالت خصوصی یا پر بودن حافظه). داده‌ها ذخیره نمی‌شن؛ همین حالا پشتیبان بگیر.</p>'}</div>
   ${standalone ? '' : `<div class="card"><h2>نصب روی گوشی</h2>
     ${ui.deferredInstall ? '<button class="btn block" data-act="install">نصب برنامه</button>' :
@@ -484,18 +486,26 @@ function openCatSheet(id, type) {
 }
 
 /* backup / export */
-function download(name, text, mime) {
+async function download(name, text, mime) {
+  const FS = plugin('Filesystem'), SH = plugin('Share');
+  if (isNative() && FS && SH) {                       // Android: write to cache, then open the share sheet
+    try {
+      const f = await FS.writeFile({ path:name, data:text, directory:'CACHE', encoding:'utf8' });
+      await SH.share({ title:name, url:f.uri, dialogTitle:'ذخیره یا ارسال فایل' });
+    } catch (e) { if (!/cancel/i.test(String((e && e.message) || e))) toast('ذخیرهٔ فایل ناموفق بود'); }
+    return;
+  }
   const blob = new Blob([text], {type:mime}), url = URL.createObjectURL(blob), a = document.createElement('a');
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 const stamp = () => todayISO();
 const csvSafe = v => { v = String(v); return /^[=+\-@\t\r]/.test(v) ? "'" + v : v; };   // stops spreadsheet formula injection
-function exportCSV() {
+async function exportCSV() {
   const q = v => `"${String(v).replace(/"/g, '""')}"`;
   const rows = [['تاریخ شمسی', 'تاریخ میلادی', 'نوع', 'دسته', 'مبلغ (تومان)', 'توضیح']];
   sortTxs(data.txs).reverse().forEach(t => { const j = toJ(t.date); rows.push([`${j.y}/${pad(j.m)}/${pad(j.d)}`, t.date, t.type === 'out' ? 'خرج' : 'درآمد', csvSafe(catOf(t.cat).name), t.amount, csvSafe(t.note)]); });
-  download(`dafter-kharj-${stamp()}.csv`, '\uFEFF' + rows.map(r => r.map(q).join(',')).join('\r\n'), 'text/csv;charset=utf-8');
+  await download(`dafter-kharj-${stamp()}.csv`, '\uFEFF' + rows.map(r => r.map(q).join(',')).join('\r\n'), 'text/csv;charset=utf-8');
   toast('فایل اکسل ساخته شد');
 }
 function exportJSON() {
@@ -518,8 +528,8 @@ async function doBackup(pw) {
   try {
     data.lastBackup = Date.now(); save();
     const text = JSON.stringify(data);
-    if (pw) download(`dafter-kharj-backup-${stamp()}.enc.json`, JSON.stringify(await Secure.encrypt(text, pw)), 'application/json');
-    else download(`dafter-kharj-backup-${stamp()}.json`, text, 'application/json');
+    if (pw) await download(`dafter-kharj-backup-${stamp()}.enc.json`, JSON.stringify(await Secure.encrypt(text, pw)), 'application/json');
+    else await download(`dafter-kharj-backup-${stamp()}.json`, text, 'application/json');
     closeSheet(); toast(pw ? 'پشتیبان رمزدار ساخته شد' : 'فایل پشتیبان ساخته شد'); if (ui.tab === 'settings' || ui.tab === 'add') render();
   } catch (e) { toast('ساخت پشتیبان ناموفق بود'); }
 }
@@ -557,6 +567,8 @@ async function shareSummary() {
   const by = new Map(); txs.filter(t => t.type === 'out').forEach(t => by.set(t.cat, (by.get(t.cat) || 0) + t.amount));
   const lines = [...by.entries()].sort((a, b) => b[1] - a[1]).map(([id, v]) => `${catOf(id).emoji} ${catOf(id).name}: ${fa(v)} (${fa(v / total * 100)}٪)`);
   const text = `خرج ${monthName(m)}: ${fa(total)} تومان\n${lines.join('\n')}`;
+  const SH = plugin('Share');
+  if (isNative() && SH) { try { await SH.share({ text }); } catch (e) { /* cancelled */ } return; }
   try { if (navigator.share) { await navigator.share({text}); return; } } catch (e) { if (e.name === 'AbortError') return; }
   try { await navigator.clipboard.writeText(text); toast('خلاصه کپی شد'); } catch (e) { toast('اشتراک‌گذاری در این مرورگر ممکن نیست'); }
 }
@@ -655,7 +667,15 @@ async function boot() {
   if (ui.tab === 'settings') render();
 }
 boot();
-if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+const AppPlugin = plugin('App');
+if (isNative() && AppPlugin) {                         // Android back button
+  AppPlugin.addListener('backButton', () => {
+    if ($('#sheet').firstChild) closeSheet();
+    else if (ui.tab !== 'add' || ui.form.id) { ui.form = newForm('out'); go('add'); }
+    else AppPlugin.exitApp();
+  });
+}
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !isNative()) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }
 })();

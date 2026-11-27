@@ -4,7 +4,7 @@
   --bg:#F4FAF6;--surface:#FFFFFF;--ink:#10281C;--muted:#5E7468;--line:#DCEBE1;
   --accent:#148A52;--accent-ink:#FFFFFF;--accent-soft:#E1F5EA;
   --in:#127A4B;--bad:#D64545;--bad-soft:#FDE8E8;--good-soft:#DDF3E6;--key:#F1F8F3;
-  --hero:#0F5B3A;--hero-ink:#FFFFFF;
+  --hero:#0F5B3A;--warn:#D99A1E;--hero-ink:#FFFFFF;
   --tabh:68px;
   color-scheme:light;
 }
@@ -13,14 +13,14 @@
     --bg:#08140E;--surface:#0F2018;--ink:#E6F4EB;--muted:#8BA999;--line:#1B3426;
     --accent:#3DDC97;--accent-ink:#05150D;--accent-soft:#14382A;
     --in:#52E3A4;--bad:#FF7B80;--bad-soft:#3A1E26;--good-soft:#123826;--key:#14281D;
-    --hero:#13412E;--hero-ink:#FFFFFF;color-scheme:dark;
+    --hero:#13412E;--warn:#F2B84B;--hero-ink:#FFFFFF;color-scheme:dark;
   }
 }
 :root[data-theme=dark]{
   --bg:#08140E;--surface:#0F2018;--ink:#E6F4EB;--muted:#8BA999;--line:#1B3426;
   --accent:#3DDC97;--accent-ink:#05150D;--accent-soft:#14382A;
   --in:#52E3A4;--bad:#FF7B80;--bad-soft:#3A1E26;--good-soft:#123826;--key:#14281D;
-  --hero:#13412E;--hero-ink:#FFFFFF;color-scheme:dark;
+  --hero:#13412E;--warn:#F2B84B;--hero-ink:#FFFFFF;color-scheme:dark;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0}
@@ -173,3 +173,17 @@ label.lbl{display:block;font-size:13px;color:var(--muted);margin:6px 2px 2px}
 .tab svg{width:24px;height:24px}
 .tab.on{color:var(--accent)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* budget on the add screen */
+.bud{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:12px 14px;margin-bottom:12px}
+.bud-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;font-size:14px}
+.bud-top b.neg{color:var(--bad)}.bud-top b.wrn{color:var(--warn)}
+.bud .bar{height:10px}
+.bud-bot{display:flex;justify-content:space-between;gap:8px;margin-top:8px;color:var(--muted);font-size:12.5px;line-height:1.5}
+.bar.warn i{background:var(--warn)}
+.ask{background:var(--accent-soft);border-radius:18px;padding:12px 14px;margin-bottom:12px;position:relative}
+.ask .row{display:flex;gap:8px;align-items:center}
+.ask .field{flex:1;margin:0}
+.ask .later{display:block;margin:8px auto 0;color:var(--muted);font-size:13px;font-weight:600}
+.bud-bot{flex-wrap:wrap}
+.bud-bot span:first-child{white-space:nowrap}

@@ -1,6 +1,6 @@
 // Service worker: makes the web version work offline (not used inside the Android app).
 // When you change any app file, bump VERSION so users get the update.
-const VERSION = 'dafter-v5';
+const VERSION = 'dafter-v6';
 const SHELL = ['./', './index.html', './style.css', './app.js', './storage.js', './storage-sqlite.js', './secure.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

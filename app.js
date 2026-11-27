@@ -79,7 +79,7 @@ const DEFAULT_CATS = [
   {id:'in-work', type:'in', name:'کار و درآمد', emoji:'💼', color:'#0E7C86'},
   {id:'in-other', type:'in', name:'سایر درآمدها', emoji:'✨', color:'#7BC74D'}
 ];
-const defaults = () => ({v:2, txs:[], cats:DEFAULT_CATS.map(c => ({...c})), budget:0, theme:'auto', lastCat:{out:'food', in:'in-family'}, lastBackup:0, snooze:0});
+const defaults = () => ({v:2, txs:[], cats:DEFAULT_CATS.map(c => ({...c})), budget:0, theme:'auto', lastCat:{out:'food', in:'in-family'}, lastBackup:0, snooze:0, budgetAsk:0});
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/, ID_RE = /^[A-Za-z0-9_.-]{1,48}$/;
 const clampInt = (v, min, max) => { v = Math.round(+v); return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : min; };
 const validISO = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && +s.slice(0, 4) >= 1990 && +s.slice(0, 4) <= 2100 && !isNaN(isoToDate(s)) && dateToIso(isoToDate(s)) === s;
@@ -114,6 +114,7 @@ function normalize(d) {
   if (d.lastCat && typeof d.lastCat === 'object') ['out', 'in'].forEach(k => { if (ID_RE.test(String(d.lastCat[k] || ''))) o.lastCat[k] = String(d.lastCat[k]); });
   o.lastBackup = clampInt(d.lastBackup, 0, 8.64e15);
   o.snooze = clampInt(d.snooze, 0, 8.64e15);
+  o.budgetAsk = clampInt(d.budgetAsk, 0, 999999);
   return o;
 }
 let data = defaults();
@@ -185,6 +186,28 @@ function monthNav() {
     <button data-act="mnext" aria-label="ماه بعد" ${isNow ? 'disabled' : ''}>‹</button></div>`;
 }
 
+const inMonth = (iso, m) => { const j = toJ(iso); return j.y === m.y && j.m === m.m; };
+function budgetBlock() {
+  const cm = curMonth(), b = data.budget, spent = sumBy(monthTxs(cm), 'out');
+  if (b > 0) {
+    const p = spent / b, left = b - spent, over = left < 0, warn = !over && p >= 0.8;
+    const remDays = monthLen(cm.y, cm.m) - toJ(todayISO()).d + 1;
+    const hint = over ? `${fa(-left)} تومان از بودجه بیشتر خرج کردی`
+      : left === 0 ? 'بودجهٔ این ماه تموم شد'
+      : `روزی حدود ${fa(left / remDays)} تومان تا آخر ماه`;
+    return `<div class="bud" aria-label="وضعیت بودجه">
+      <div class="bud-top"><span>بودجهٔ ${MONTHS[cm.m - 1]}</span><b class="num ${over ? 'neg' : warn ? 'wrn' : ''}">${fa(Math.min(p * 100, 999))}٪ مصرف شده</b></div>
+      <div class="bar ${over ? 'over' : warn ? 'warn' : ''}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.min(Math.round(p * 100), 100)}"><i style="width:${Math.min(p * 100, 100)}%"></i></div>
+      <div class="bud-bot"><span class="num">${fa(spent)} از ${fa(b)}</span><span>${hint}</span></div></div>`;
+  }
+  if (data.budgetAsk !== mkey(cm)) {
+    return `<div class="ask"><b>بودجهٔ ${MONTHS[cm.m - 1]} چقدره؟</b>
+      <p class="hint" style="margin:2px 0 8px">با تعیین بودجه، بعد از هر خرج می‌بینی چقدر مونده.</p>
+      <div class="row"><input class="field" data-bind="qbudget" inputmode="numeric" placeholder="مثلاً ۸٬۰۰۰٬۰۰۰ تومان" aria-label="بودجهٔ ماه"><button class="btn small" data-act="budget-save">ثبت</button></div>
+      <button class="later" data-act="budget-later">بعداً</button></div>`;
+  }
+  return '';
+}
 function viewAdd() {
   const f = ui.form, cats = catsOf(f.type);
   const mt = monthTxs(curMonth()), spent = sumBy(mt, 'out'), today = sumBy(data.txs.filter(t => t.date === todayISO()), 'out');
@@ -198,7 +221,8 @@ function viewAdd() {
   ${!f.id ? `<div class="glance">
     <div><small>خرج امروز</small><b class="num">${fa(today)}</b></div>
     <div><small>${data.budget > 0 ? (left >= 0 ? 'مانده بودجهٔ ماه' : 'بیشتر از بودجه') : 'خرج این ماه'}</small>
-    <b class="num" style="${data.budget > 0 && left < 0 ? 'color:var(--bad)' : ''}">${fa(data.budget > 0 ? Math.abs(left) : spent)}</b></div></div>` : ''}
+    <b class="num" style="${data.budget > 0 && left < 0 ? 'color:var(--bad)' : ''}">${fa(data.budget > 0 ? Math.abs(left) : spent)}</b></div></div>
+  ${budgetBlock()}` : ''}
   <div class="seg" role="group" aria-label="نوع تراکنش">
     <button data-act="type" data-type="out" class="${f.type === 'out' ? 'on' : ''}">خرج</button>
     <button data-act="type" data-type="in" class="${f.type === 'in' ? 'on' : ''}">درآمد</button></div>
@@ -300,7 +324,7 @@ function viewReport() {
     else line = `${fa(rem)} تومان از بودجه باقی ماند.`;
     budgetCard = `<div class="card"><h2>بودجهٔ ماه</h2>
       <div style="display:flex;justify-content:space-between;margin-bottom:6px" class="num"><span>${fa(total)}</span><span class="muted">از ${fa(data.budget)}</span></div>
-      <div class="bar ${over ? 'over' : ''}"><i style="width:${Math.min(p * 100, 100)}%"></i></div>
+      <div class="bar ${over ? 'over' : p >= 0.8 ? 'warn' : ''}"><i style="width:${Math.min(p * 100, 100)}%"></i></div>
       <p class="hint" style="margin:8px 0 0">${line}</p></div>`;
   }
 
@@ -414,9 +438,18 @@ function saveForm() {
     toast('تغییرات ذخیره شد'); go('list');
   } else {
     const t = {id:uid(), ts:Date.now(), ...rec};
+    const cm = curMonth(), counts = f.type === 'out' && inMonth(rec.date, cm);
+    const before = counts ? sumBy(monthTxs(cm), 'out') : 0, after = before + amount;
     data.txs.push(t); save();
     ui.form = newForm(f.type); render();
-    toast(f.type === 'out' ? 'خرج ثبت شد' : 'درآمد ثبت شد', 'واگرد', () => { data.txs = data.txs.filter(x => x.id !== t.id); save(); render(); });
+    let msg = f.type === 'out' ? 'خرج ثبت شد' : 'درآمد ثبت شد';
+    if (counts && data.budget > 0) {
+      const b = data.budget, left = b - after;
+      msg += left >= 0 ? `. مانده بودجه: ${fa(left)}` : `. ${fa(-left)} بیشتر از بودجه`;
+      if (before <= b && after > b) msg += ' ⚠️ از بودجه رد شدی';
+      else if (before < b * 0.8 && after >= b * 0.8 && after <= b) msg += ' ⚠️ ۸۰٪ بودجه مصرف شد';
+    }
+    toast(msg, 'واگرد', () => { data.txs = data.txs.filter(x => x.id !== t.id); save(); render(); });
   }
 }
 async function deleteTx(id, fromForm) {
@@ -606,6 +639,12 @@ const ACTIONS = {
   'export-json': exportJSON,
   'export-csv': exportCSV,
   'backup-now': exportJSON,
+  'budget-save': () => {
+    const d = parseInt(en(ui.quickBudget || '').replace(/\D/g, ''), 10) || 0;
+    if (!d) { toast('یه مبلغ وارد کن'); return; }
+    data.budget = d; save(); ui.quickBudget = ''; render(); toast('بودجهٔ ماه ثبت شد');
+  },
+  'budget-later': () => { data.budgetAsk = mkey(curMonth()); save(); render(); },
   'backup-snooze': () => { data.snooze = Date.now() - 23 * DAY; save(); render(); },
   import: () => $('#file').click(),
   wipe: async () => { if (await confirmSheet('همهٔ تراکنش‌ها و دسته‌ها پاک بشن؟ این کار برگشت نداره.', 'پاک کن')) { data = defaults(); save(); ui.form = newForm('out'); applyTheme(); render(); toast('همه‌چیز پاک شد'); } },
@@ -626,6 +665,10 @@ document.addEventListener('input', e => {
   const v = e.target.value;
   if (b === 'note') ui.form.note = v;
   else if (b === 'q') { ui.filter.q = v; $('#list').innerHTML = listBody(); }
+  else if (b === 'qbudget') {
+    const d = en(v).replace(/\D/g, '').slice(0, 12);
+    ui.quickBudget = d; e.target.value = d ? fa(+d) : '';
+  }
   else if (b === 'budget') {
     const d = en(v).replace(/\D/g, '').slice(0, 12);
     data.budget = d ? +d : 0; e.target.value = d ? fa(+d) : ''; save();
